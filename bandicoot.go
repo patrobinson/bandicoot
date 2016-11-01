@@ -6,6 +6,7 @@ import (
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
+	iptables "github.com/coreos/go-iptables/iptables"
 	"strings"
 	"time"
 )
@@ -154,9 +155,22 @@ func generateIpTablesRules(container *docker.Container, status string) (iptables
 }
 
 func manageIpTablesRules(container *docker.Container, status string) error {
+	const protocol = iptables.ProtocolIPv4
+	ipt, err := iptables.NewWithProtocol(protocol)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	output, err := generateIpTablesRules(container, status)
 	if err == nil {
-		log.Infof(strings.Join(output.rulespec, "\n"))
+		for i := range output.rulespec {
+			if output.action == "Append" {
+				ipt.Append("filter", output.chain, output.rulespec[i])
+			} else {
+				ipt.Delete("filter", output.chain, output.rulespec[i])
+			}
+			log.Infof(output.rulespec[i])
+		}
 	}
 
 	return err
