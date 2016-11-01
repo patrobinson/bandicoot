@@ -28,7 +28,7 @@ func TestAllowPort(t *testing.T) {
 	config := docker.Config{Labels: labels}
 	container := docker.Container{Config: &config}
 	event := docker.APIEvents{Status: "start"}
-	expectedRuleSpec := []string{`-p tcp --dport 443 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT -m comment --comment "Bandicoot: https"`}
+	expectedRuleSpec := []string{"-p", "tcp", "--dport", "443", "-m", "conntrack", "--ctstate", "NEW,ESTABLISHED", "-j", "ACCEPT", "-m", "comment", "--comment", `"Bandicoot: https"`}
 
 	output, err := generateIpTablesRules(&container, event.Status)
 
@@ -44,7 +44,9 @@ func TestAllowPort(t *testing.T) {
 		t.Fatalf(`Expected action to be "Append"`)
 	}
 
-	if output.rulespec[0] != expectedRuleSpec[0] {
-		t.Fatalf("Error output:\n\t%v\nDid not match expected:\n\t%v\n", output.rulespec[0], expectedRuleSpec[0])
-	}
+  for i := range output.rulespec[0] {
+    if output.rulespec[0][i] != expectedRuleSpec[i] {
+      t.Fatalf("Error output:\n\t%v\nDid not match expected:\n\t%v\n", output.rulespec[0][i], expectedRuleSpec[i])
+    }
+  }
 }

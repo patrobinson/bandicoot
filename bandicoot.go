@@ -9,6 +9,7 @@ import (
 	iptables "github.com/coreos/go-iptables/iptables"
 	"strings"
 	"time"
+	"strconv"
 )
 
 const workerTimeout = 180 * time.Second
@@ -28,7 +29,7 @@ type dockerRouter struct {
 type iptablesRule struct {
 	action   string
 	chain    string
-	rulespec []string
+	rulespec [][]string
 }
 
 func dockerEventsRouter(bufferSize int, workerPoolSize int, dockerClient *docker.Client,
@@ -140,14 +141,23 @@ func generateIpTablesRules(container *docker.Container, status string) (iptables
 				for i := range cS {
 					connectionStates[i] = cS[i].(string)
 				}
-				returnValue.rulespec = append(returnValue.rulespec, fmt.Sprintf("-p %v --dport %v -m %v --ctstate %v -j %v -m comment --comment %v",
-					options["protocol"],
-					options["destinationPort"],
-					options["match"],
-					strings.Join(connectionStates, ","),
-					options["target"],
-					commentForRule(desc),
-				))
+				returnValue.rulespec = append(returnValue.rulespec,
+					[]string{
+						"-p",
+						options["protocol"].(string),
+						"--dport",
+						strconv.FormatFloat(options["destinationPort"].(float64), 'f', 0, 64),
+						"-m",
+						options["match"].(string),
+						"--ctstate",
+						strings.Join(connectionStates, ","),
+						"-j",
+						options["target"].(string),
+						"-m",
+						"comment",
+						"--comment",
+						commentForRule(desc),
+				})
 			}
 		}
 	}
@@ -161,16 +171,24 @@ func manageIpTablesRules(container *docker.Container, status string) error {
 		log.Fatal(err)
 	}
 
+
 	output, err := generateIpTablesRules(container, status)
 	if err == nil {
+		log.Infof("Processing %v rules", len(output.rulespec))
 		for i := range output.rulespec {
 			if output.action == "Append" {
-				ipt.Append("filter", output.chain, output.rulespec[i])
+				err = ipt.Append("filter", output.chain, output.rulespec[i]...)
 			} else {
-				ipt.Delete("filter", output.chain, output.rulespec[i])
+				err = ipt.Delete("filter", output.chain, output.rulespec[i]...)
 			}
-			log.Infof(output.rulespec[i])
+			if err != nil {
+				log.Error("Unable to add chain rule: %v", err)
+			} else {
+				log.Infof("Added rule: %v", output.rulespec[i])
+			}
 		}
+	} else {
+		log.Error("Failed to generate iptables rule %v", err)
 	}
 
 	return err
