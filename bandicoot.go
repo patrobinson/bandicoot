@@ -24,6 +24,12 @@ type dockerRouter struct {
 	workerTimeout time.Duration
 }
 
+type iptablesRule struct {
+	action   string
+	chain    string
+	rulespec []string
+}
+
 func dockerEventsRouter(bufferSize int, workerPoolSize int, dockerClient *docker.Client,
 	handlers map[string][]handler) (*dockerRouter, error) {
 	workers := make(chan *worker, workerPoolSize)
@@ -103,18 +109,18 @@ func commentForRule(description string) string {
 	return fmt.Sprintf(`"Bandicoot: %v"`, description)
 }
 
-func generateIpTablesRules(container *docker.Container, status string) (string, error) {
+func generateIpTablesRules(container *docker.Container, status string) (iptablesRule, error) {
+	var returnValue iptablesRule
 	const bandicootNamespace = "io.bandicoot.rules"
 	allowed, ok := container.Config.Labels[bandicootNamespace]
 
-	var action string
 	switch status {
 	case "start":
-		action = "-A"
+		returnValue.action = "Append"
 	case "die":
-		action = "-D"
+		returnValue.action = "Delete"
 	default:
-		return "", errors.New("unexpected event received")
+		return returnValue, errors.New("unexpected event received")
 	}
 
 	if ok {
@@ -125,7 +131,7 @@ func generateIpTablesRules(container *docker.Container, status string) (string, 
 		}
 
 		for k, v := range label {
-			chain := strings.ToUpper(k)
+			returnValue.chain = strings.ToUpper(k)
 			for desc, o := range v.(map[string]interface{}) {
 				options := o.(map[string]interface{})
 				cS := options["connectionStates"].([]interface{})
@@ -133,26 +139,24 @@ func generateIpTablesRules(container *docker.Container, status string) (string, 
 				for i := range cS {
 					connectionStates[i] = cS[i].(string)
 				}
-				return fmt.Sprintf("iptables %v %v -p %v --dport %v -m %v --ctstate %v -j %v -m comment --comment %v",
-					action,
-					chain,
+				returnValue.rulespec = append(returnValue.rulespec, fmt.Sprintf("-p %v --dport %v -m %v --ctstate %v -j %v -m comment --comment %v",
 					options["protocol"],
 					options["destinationPort"],
 					options["match"],
 					strings.Join(connectionStates, ","),
 					options["target"],
 					commentForRule(desc),
-				), nil
+				))
 			}
 		}
 	}
-	return "", nil
+	return returnValue, nil
 }
 
 func manageIpTablesRules(container *docker.Container, status string) error {
 	output, err := generateIpTablesRules(container, status)
 	if err == nil {
-		log.Infof(output)
+		log.Infof(strings.Join(output.rulespec, "\n"))
 	}
 
 	return err
