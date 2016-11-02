@@ -7,10 +7,19 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	iptables "github.com/coreos/go-iptables/iptables"
-	"strings"
 	"time"
 	"strconv"
 )
+
+type firewallRuleList struct {
+	Input     []firewallRule `json: input`
+}
+
+type firewallRule struct {
+	Protocol    string `json: protocol`
+	Description string `json: description`
+	Port        int    `json: port`
+}
 
 const workerTimeout = 180 * time.Second
 
@@ -126,39 +135,33 @@ func generateIpTablesRules(container *docker.Container, status string) (iptables
 	}
 
 	if ok {
-		var label map[string]interface{}
+		var label firewallRuleList
 		err := json.Unmarshal([]byte(allowed), &label)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		for k, v := range label {
-			returnValue.chain = strings.ToUpper(k)
-			for desc, o := range v.(map[string]interface{}) {
-				options := o.(map[string]interface{})
-				cS := options["connectionStates"].([]interface{})
-				connectionStates := make([]string, len(cS))
-				for i := range cS {
-					connectionStates[i] = cS[i].(string)
-				}
-				returnValue.rulespec = append(returnValue.rulespec,
-					[]string{
-						"-p",
-						options["protocol"].(string),
-						"--dport",
-						strconv.FormatFloat(options["destinationPort"].(float64), 'f', 0, 64),
-						"-m",
-						options["match"].(string),
-						"--ctstate",
-						strings.Join(connectionStates, ","),
-						"-j",
-						options["target"].(string),
-						"-m",
-						"comment",
-						"--comment",
-						commentForRule(desc),
-				})
-			}
+		// TODO: Put this in the rulespec
+		returnValue.chain = "INPUT"
+
+		for _, rule := range label.Input {
+			returnValue.rulespec = append(returnValue.rulespec,
+				[]string{
+					"-p",
+					rule.Protocol,
+					"--dport",
+					strconv.Itoa(rule.Port),
+					"-m",
+					"conntrack",
+					"--ctstate",
+					"NEW,ESTABLISHED",
+					"-j",
+					"ACCEPT",
+					"-m",
+					"comment",
+					"--comment",
+					commentForRule(rule.Description),
+			})
 		}
 	}
 	return returnValue, nil

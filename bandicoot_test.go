@@ -10,18 +10,13 @@ func TestAllowPort(t *testing.T) {
 	const bandicootNamespace = ""
 	labels := map[string]string{
 		"io.bandicoot.rules": `{
-      "input": {
-        "https": {
-          "destinationPort": 443,
-          "match": "conntrack",
-          "connectionStates": [
-            "NEW",
-            "ESTABLISHED"
-          ],
-          "target": "ACCEPT",
-          "protocol": "tcp"
+      "input": [
+        {
+          "protocol": "tcp",
+          "description": "https",
+          "port": 443
         }
-      }
+      ]
     }`,
 	}
 
