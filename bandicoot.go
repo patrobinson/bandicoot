@@ -5,20 +5,21 @@ import (
 	"errors"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
-	"github.com/fsouza/go-dockerclient"
 	iptables "github.com/coreos/go-iptables/iptables"
-	"time"
+	"github.com/fsouza/go-dockerclient"
 	"strconv"
+	"time"
 )
 
 type firewallRuleList struct {
-	Input     []firewallRule `json: input`
+	Input []firewallRule `json: input`
 }
 
 type firewallRule struct {
-	Protocol    string `json: protocol`
-	Description string `json: description`
-	Port        int    `json: port`
+	Protocol    string `json:"protocol"`
+	Description string `json:"description"`
+	Port        int    `json:"port"`
+	SourceIp    string `json:"source_ip"`
 }
 
 const workerTimeout = 180 * time.Second
@@ -151,6 +152,8 @@ func generateIpTablesRules(container *docker.Container, status string) (iptables
 					rule.Protocol,
 					"--dport",
 					strconv.Itoa(rule.Port),
+					"--source",
+					rule.SourceIp,
 					"-m",
 					"conntrack",
 					"--ctstate",
@@ -161,7 +164,7 @@ func generateIpTablesRules(container *docker.Container, status string) (iptables
 					"comment",
 					"--comment",
 					commentForRule(rule.Description),
-			})
+				})
 		}
 	}
 	return returnValue, nil
@@ -173,7 +176,6 @@ func manageIpTablesRules(container *docker.Container, status string) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 
 	output, err := generateIpTablesRules(container, status)
 	if err == nil {

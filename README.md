@@ -13,7 +13,8 @@ Example label:
     {
       "protocol": "tcp",
       "description": "https",
-      "port": 443
+      "port": 443,
+      "source_ip": "0.0.0.0/0"
     }
   ]
 }
